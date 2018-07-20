@@ -1,0 +1,2 @@
+include *.txt *.rst Makefile*
+recursive-include src/metapensiero *.py
