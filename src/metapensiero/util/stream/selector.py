@@ -59,7 +59,7 @@ class Selector:
         if data['send_capable']:
             data['queue'].clear()
             data['send_event'].clear()
-        all_stopped = all(sd['status'] == SELECTOR_STATUS.STOPPED for sd in
+        all_stopped = all(sd['status'] is SELECTOR_STATUS.STOPPED for sd in
                           self._source_data.values())
         if all_stopped:
             self._push(STOPPED_TOKEN)
@@ -184,7 +184,7 @@ class Selector:
         """Stop pulling from a single source."""
         if self._status > SELECTOR_STATUS.INITIAL:
             data = self._source_data[source]
-            if data['status'] == SELECTOR_STATUS.STARTED:
+            if data['status'] is SELECTOR_STATUS.STARTED:
                 data['task'].cancel()
             with suppress(asyncio.CancelledError):
                 await data['task']
@@ -194,13 +194,13 @@ class Selector:
         """Add a new source to the group of those followed."""
         if source not in self._sources:
             self._sources.add(source)
-            if self._status == SELECTOR_STATUS.STARTED:
+            if self._status is SELECTOR_STATUS.STARTED:
                 self._start_source_loop(source)
 
     async def gen(self):
-        assert self._status == SELECTOR_STATUS.STARTED
         """Produce the values iterated by the consumer of the Selector
         instance."""
+        assert self._status is SELECTOR_STATUS.STARTED
         try:
             while await self._result_avail.wait():
                 if len(self._results):
