@@ -5,3 +5,5 @@
 # :License:   GNU General Public License version 3 or later
 # :Copyright: © 2018 Alberto Berti
 #
+
+from .selector import Selector

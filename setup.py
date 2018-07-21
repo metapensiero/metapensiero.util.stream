@@ -50,4 +50,11 @@ setup(
             'readme_renderer',
         ]
     },
+    setup_requires=[
+        'pytest-runner'
+    ],
+    tests_require=[
+        'pytest',
+        'pytest-asyncio'
+    ]
 )
