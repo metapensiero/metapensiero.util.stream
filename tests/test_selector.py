@@ -120,7 +120,7 @@ async def test_yielded_source_with_values():
     # Note: seems like a code smell for a param, like return_source, to change the output.
     # Might make more sense to attach to a method like dict.items() or just always return
     # both and expect some _, value type unpacking.
-    async for source, value in Selector(*source_values.keys(), return_source=True):
+    async for source, value in Selector(*source_values.keys(), yield_source=True):
         source_values[source].remove(value)
     else:
         assert all(len(vs) == 0 for vs in source_values.values())

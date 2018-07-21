@@ -29,10 +29,13 @@ class Selector:
       sent in
     :param bool remove_none: optional boolean used to remove ``None``
       value from the stream
+
+    :param bool yield_source: If True, instead of yielding just the
+      values, the selector will yield a tuple (source, values)
     """
 
     def __init__(self, *sources, loop=None, await_send=False,
-                 remove_none=False):
+                 remove_none=False, yield_source=False):
         self.loop = loop or asyncio.get_event_loop()
         self._status = SELECTOR_STATUS.INITIAL
         self._sources = set(sources)
@@ -41,6 +44,7 @@ class Selector:
         self._await_send = await_send
         self._remove_none = remove_none
         self._source_data = collections.defaultdict(dict)
+        self._yield_source = yield_source
         self._gen = None
 
     def __aiter__(self):
@@ -62,7 +66,7 @@ class Selector:
         all_stopped = all(sd['status'] is SELECTOR_STATUS.STOPPED for sd in
                           self._source_data.values())
         if all_stopped:
-            self._push(STOPPED_TOKEN)
+            self._push(None, STOPPED_TOKEN)
 
     async def _iterate_source(self, source, agen, send_value_avail=None,
                               queue=None):
@@ -75,7 +79,7 @@ class Selector:
                     el = await agen.asend(send_value)
                 else:
                     el = await agen.__anext__()
-                self._push(el)
+                self._push(source, el)
                 if send_capable:
                     if self._await_send:
                         await send_value_avail.wait()
@@ -95,11 +99,11 @@ class Selector:
         except GeneratorExit:
             pass
         except Exception as e:
-            self._push(e)
+            self._push(source, e)
         finally:
             self._cleanup(source)
 
-    def _push(self, el):
+    def _push(self, source, el):
         """Check the result of the future. If the exception is an instance of
         ``StopAsyncIteration`` it means that the corresponding source
         is exhausted.
@@ -108,10 +112,10 @@ class Selector:
         swallowed. Instead it is raised on the :meth:`gen` method."""
         if self._remove_none:
             if el is not None:
-                self._results.append(el)
+                self._results.append((source, el))
                 self._result_avail.set()
         else:
-            self._results.append(el)
+            self._results.append((source, el))
             self._result_avail.set()
 
     def _remove_stopped_source(self, source,  stop_fut):
@@ -204,13 +208,16 @@ class Selector:
         try:
             while await self._result_avail.wait():
                 if len(self._results):
-                    v = self._results.popleft()
+                    source, v = self._results.popleft()
                     if v == STOPPED_TOKEN:
                         break
                     elif isinstance(v, Exception):
                         raise v
                     else:
-                        sent_value = yield v
+                        if self._yield_source:
+                            sent_value = yield (source, v)
+                        else:
+                            sent_value = yield v
                     if sent_value is not None:
                         self._send(sent_value)
                 else:
