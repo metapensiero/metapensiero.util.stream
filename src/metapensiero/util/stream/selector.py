@@ -19,8 +19,17 @@ STOPPED_TOKEN = object()
 
 
 class Selector:
-    """An object that accepts multiple async iterables and *unifies* them. It is
-    itself an async iterable."""
+    """An object that accepts multiple async iterables and *unifies*
+    them. It is itself an async iterable.
+
+    :param bool await_send: optional boolean used to signal if the
+      selector machinery will always wait for a ``send`` value to be
+      available from the consuming context when iterating over a
+      source. By default if no value is available,``None`` will be
+      sent in
+    :param bool remove_none: optional boolean used to remove ``None``
+      value from the stream
+    """
 
     def __init__(self, *sources, loop=None, await_send=False,
                  remove_none=False):
@@ -35,6 +44,7 @@ class Selector:
         self._gen = None
 
     def __aiter__(self):
+        """Async generator main interface, it isn't a coroutine, """
         if self._gen:
             raise RuntimeError('This Selector already has a consumer, there can'
                                ' be only one.')
@@ -91,12 +101,11 @@ class Selector:
 
     def _push(self, el):
         """Check the result of the future. If the exception is an instance of
-        ``StopAsyncIteration`` it means that the corresponding source is
-        exhausted.
+        ``StopAsyncIteration`` it means that the corresponding source
+        is exhausted.
 
-        The exception is not raised here because it will be swallowed. Instead
-        it is raised on the :meth:`gen` method.
-        """
+        The exception is not raised here because it will be
+        swallowed. Instead it is raised on the :meth:`gen` method."""
         if self._remove_none:
             if el is not None:
                 self._results.append(el)
@@ -111,6 +120,7 @@ class Selector:
         self._sources.remove(source)
 
     def _run(self):
+        """For every registered source, start a pulling coroutine."""
         for s in self._sources:
             self._start_source_loop(s)
         self._status = SELECTOR_STATUS.STARTED
@@ -132,7 +142,9 @@ class Selector:
         return status
 
     def _start_source_loop(self, source):
-        """start a coroutine that will follow on source data"""
+        """Start a coroutine that will pull (and send, if it's the case) data
+        from (and into) a given source using async iteration protocol.
+        """
         if hasattr(source, '__aiter__'):
             agen = source.__aiter__()
         else:
@@ -160,6 +172,7 @@ class Selector:
         self._source_data[source]['task'] = source_fut
 
     async def _stop(self):
+        """Stop pulling data from every registered source."""
         for s, data in self._source_data.items():
             await self._stop_iteration_on(s)
         self._gen = None
@@ -168,6 +181,7 @@ class Selector:
         self._status = SELECTOR_STATUS.STOPPED
 
     async def _stop_iteration_on(self, source):
+        """Stop pulling from a single source."""
         if self._status > SELECTOR_STATUS.INITIAL:
             data = self._source_data[source]
             if data['status'] == SELECTOR_STATUS.STARTED:
@@ -184,8 +198,9 @@ class Selector:
                 self._start_source_loop(source)
 
     async def gen(self):
-        """Generator workhorse."""
         assert self._status == SELECTOR_STATUS.STARTED
+        """Produce the values iterated by the consumer of the Selector
+        instance."""
         try:
             while await self._result_avail.wait():
                 if len(self._results):
