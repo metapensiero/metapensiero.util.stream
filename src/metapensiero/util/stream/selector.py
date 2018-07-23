@@ -18,31 +18,56 @@ SELECTOR_STATUS = enum.IntEnum('SelectorStatus',
 STOPPED_TOKEN = object()
 
 
+class FutureValue:
+    """An awaitable containing a discrete value. The interface it's the
+    same as asyncio.Event but `.set()`:meth: supports an optional ``value``
+    parameter. `.wait()`:meth: will return the set value.
+
+    :param loop: optional *asyncio* event loop
+    """
+
+    def __init__(self, loop=None):
+        if loop is None:
+            self.loop = loop = asyncio.get_event_loop()
+        self._event = asyncio.Event(loop=loop)
+        self._value = None
+
+    def clear(self):
+        self._value = None
+        self._event.clear()
+
+    def is_set(self):
+        return self._event.is_set()
+
+    def set(self, value=None):
+        """Set the instance value.
+
+        :param value: the value to set the instance to, defaults to None
+        """
+        self._value = value
+        self._event.set()
+
+    async def wait(self):
+        """Wait for the value. It will return immediately if `.set()`:meth:
+        has been called already."""
+        await self._event.wait()
+        return self._value
+
+
 class Selector:
     """An object that accepts multiple async iterables and *unifies*
     them. It is itself an async iterable.
-
-    :param bool await_send: optional boolean used to signal if the
-      selector machinery will always wait for a ``send`` value to be
-      available from the consuming context when iterating over a
-      source. By default if no value is available,``None`` will be
-      sent in
-    :param bool remove_none: optional boolean used to remove ``None``
-      value from the stream
 
     :param bool yield_source: If True, instead of yielding just the
       values, the selector will yield a tuple (source, values)
     """
 
-    def __init__(self, *sources, loop=None, await_send=False,
-                 remove_none=False, yield_source=False):
+    def __init__(self, *sources, loop=None, yield_source=False):
         self.loop = loop or asyncio.get_event_loop()
         self._status = SELECTOR_STATUS.INITIAL
         self._sources = set(sources)
         self._result_avail = asyncio.Event(loop=self.loop)
         self._results = collections.deque()
-        self._await_send = await_send
-        self._remove_none = remove_none
         self._source_data = collections.defaultdict(dict)
         self._yield_source = yield_source
         self._gen = None
@@ -61,17 +86,15 @@ class Selector:
         self._source_status(source, SELECTOR_STATUS.STOPPED)
         data = self._source_data[source]
         if data['send_capable']:
-            data['queue'].clear()
-            data['send_event'].clear()
+            data['send_value'].clear()
         all_stopped = all(sd['status'] is SELECTOR_STATUS.STOPPED for sd in
                           self._source_data.values())
         if all_stopped:
             self._push(None, STOPPED_TOKEN)
 
-    async def _iterate_source(self, source, agen, send_value_avail=None,
-                              queue=None):
+    async def _iterate_source(self, source, agen, send_value_cont=None):
         self._source_status(source, SELECTOR_STATUS.STARTED)
-        send_capable = queue is not None
+        send_capable = send_value_cont is not None
         send_value = None
         try:
             while True:
@@ -81,16 +104,8 @@ class Selector:
                     el = await agen.__anext__()
                 self._push(source, el)
                 if send_capable:
-                    if self._await_send:
-                        await send_value_avail.wait()
-                        send_value = queue.popleft()
-                        if len(queue) == 0:
-                            send_value_avail.clear()
-                    else:
-                        if len(queue) > 0:
-                            send_value = queue.popleft()
-                        else:
-                            send_value = None
+                    send_value = await send_value_cont.wait()
+                    send_value_cont.clear()
         except StopAsyncIteration:
             pass
         except asyncio.CancelledError:
@@ -110,13 +125,8 @@ class Selector:
 
         The exception is not raised here because it will be
         swallowed. Instead it is raised on the :meth:`gen` method."""
-        if self._remove_none:
-            if el is not None:
-                self._results.append((source, el))
-                self._result_avail.set()
-        else:
-            self._results.append((source, el))
-            self._result_avail.set()
+        self._results.append((source, el))
+        self._result_avail.set()
 
     def _remove_stopped_source(self, source,  stop_fut):
         if source in self._source_data:
@@ -129,14 +139,11 @@ class Selector:
             self._start_source_loop(s)
         self._status = SELECTOR_STATUS.STARTED
 
-    def _send(self, value):
-        assert value is not None
-        for sd in self._source_data.values():
-            queue = sd['queue']
-            event = sd['send_event']
-            if queue is not None:
-                queue.append(value)
-                event.set()
+    def _send(self, source, value):
+        sd = self._source_data[source]
+        send_value_cont = sd['send_value']
+        if send_value_cont is not None:
+            send_value_cont.set(value)
 
     def _source_status(self, source, status=None):
         if status:
@@ -160,18 +167,15 @@ class Selector:
             send_capable = hasattr(agen, 'asend')
             self._source_data[source]['send_capable'] = send_capable
             if send_capable:
-                queue = collections.deque()
-                send_value_avail = asyncio.Event(loop=self.loop)
+                send_value_cont = FutureValue(loop=self.loop)
             else:
-                send_value_avail, queue = None, None
-            self._source_data[source]['queue'] = queue
-            self._source_data[source]['send_event'] = send_value_avail
+                send_value_cont = None
+            self._source_data[source]['send_value'] = send_value_cont
         else:
-            queue = self._source_data[source]['queue']
-            send_value_avail = self._source_data[source]['send_event']
+            send_value_cont = self._source_data[source]['send_value']
 
         source_fut = asyncio.ensure_future(
-            self._iterate_source(source, agen, send_value_avail, queue),
+            self._iterate_source(source, agen, send_value_cont),
             loop=self.loop)
         self._source_data[source]['task'] = source_fut
 
@@ -218,8 +222,7 @@ class Selector:
                             sent_value = yield (source, v)
                         else:
                             sent_value = yield v
-                    if sent_value is not None:
-                        self._send(sent_value)
+                        self._send(source, sent_value)
                 else:
                     self._result_avail.clear()
         finally:
