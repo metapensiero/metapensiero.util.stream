@@ -63,7 +63,7 @@ async def test_selector(event_loop):
 async def test_selector_send(event_loop):
 
     # use partial here just to differentiate the two sources
-    s = Selector(echo_gen, partial(echo_gen), await_send=True)
+    s = Selector(echo_gen, partial(echo_gen))
     ch = s.__aiter__()
 
     # setup
