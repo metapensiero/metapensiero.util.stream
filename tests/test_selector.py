@@ -80,10 +80,10 @@ async def test_selector_send(event_loop):
     data.append(await ch.asend(None))
 
     with pytest.raises(StopAsyncIteration):
-        v = await ch.asend(None)
+        v = await ch.asend('done')
         data.append(v)
 
-    assert data == ['initial', 1, 'a', 1, 'a']
+    assert data == ['initial', 1, 'a', None, None]
 
 
 @pytest.mark.asyncio
@@ -114,12 +114,9 @@ async def test_yielded_source_with_values():
         [object(), object(), object()],
         [object(), object(), object()],
     ]
-    source_values = {make_async_gen(vs)(): vs for vs in source_values}
-
-    # Note: seems like a code smell for a param, like return_source, to change the output.
-    # Might make more sense to attach to a method like dict.items() or just always return
-    # both and expect some _, value type unpacking.
-    async for source, value in Selector(*source_values.keys(), yield_source=True):
+    source_values = {make_async_gen(vs)(): vs.copy() for vs in source_values}
+    sel = Selector(*source_values.keys(), yield_source=True)
+    async for source, value in sel:
         source_values[source].remove(value)
     else:
         assert all(len(vs) == 0 for vs in source_values.values())
