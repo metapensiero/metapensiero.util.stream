@@ -124,13 +124,6 @@ async def test_yielded_source_with_values():
 
 @pytest.mark.asyncio
 async def test_exception_handling():
-    # Note: same kind of consideration as above about a param changing
-    # the output type.
-    # Also, asyncio.wait you can await and it'll return a Future to be
-    # awaited to handle
-    # exceptions raised. It would mean Selector opening the result and
-    # then rewrapping the result/exception in a Future to be returned
-    # to the caller.
     class AnException(Exception):
         pass
     exc1 = AnException()
@@ -153,3 +146,10 @@ async def test_exception_handling():
             break
 
     assert result == expected
+    # from what I can see, there's no way this can ever be True,
+    # result will forcibly contain the values up to the first
+    # exception, but not any value after that.
+    # The fact is that if the selector has to ``re-raise`` the
+    # exception propagated from the source async generator, there's no
+    # way it resumes that raise if it's coded as a coroutine (see
+    # Selector.gen()), and i don't see how else it can be coded
