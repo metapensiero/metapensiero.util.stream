@@ -124,10 +124,6 @@ async def test_yielded_source_with_values():
 
 @pytest.mark.asyncio
 async def test_exception_handling():
-    source_1 = make_async_gen([0, 1, 2, 3, 4, Exception()])
-    source_2 = make_async_gen([0, 1, Exception(), 3, 4, 5])
-    expected = [0, 0, 1, 1, 2, Exception, 3, 4, Exception]
-
     # Note: same kind of consideration as above about a param changing
     # the output type.
     # Also, asyncio.wait you can await and it'll return a Future to be
@@ -135,16 +131,25 @@ async def test_exception_handling():
     # exceptions raised. It would mean Selector opening the result and
     # then rewrapping the result/exception in a Future to be returned
     # to the caller.
-    async for value in Selector(source_1(), source_2()):
-        # noinspection PyBroadException
+    class AnException(Exception):
+        pass
+    exc1 = AnException()
+    exc2 = AnException()
+    src1 = [0, 1, 2, 3, 4, exc1]
+    src2 = [0, 1, exc2, 3, 4, 5]
+    source_1 = make_async_gen(src1, initial_delay=0.2)
+    source_2 = make_async_gen(src2)
+    expected = [0, 1, exc2, 3, 4, 5, 0, 1, 2, 3, 4, exc1]
+    result = []
+
+    sel = Selector(source_1, source_2)
+    sel_agen = sel.__aiter__()
+    while True:
         try:
-            # maybe yieldable returned
-            value = yield value
-            # or maybe awaitable
-            # value = await value
-            # or future
-            # value = await value.result()
-        except Exception:
-            assert isinstance(expected.pop(0), Exception)
-        else:
-            assert value == expected.pop(0)
+            result.append(await sel_agen.__anext__())
+        except AnException as e:
+            result.append(e)
+        except StopAsyncIteration:
+            break
+
+    assert result == expected
