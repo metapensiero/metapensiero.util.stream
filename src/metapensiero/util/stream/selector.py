@@ -79,8 +79,9 @@ class Selector:
     def __aiter__(self):
         """Async generator main interface, it isn't a coroutine, """
         if self._gen:
-            raise RuntimeError('This Selector already has a consumer, there can'
-                               ' be only one.')
+            raise RuntimeError(
+                'This Selector already has a consumer, there can'
+                ' be only one.')
         else:
             self._run()
             self._gen = g = self.gen()
