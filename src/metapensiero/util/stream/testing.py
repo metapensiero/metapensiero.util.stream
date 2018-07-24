@@ -29,7 +29,8 @@ async def echo_gen():
         v = yield v
 
 
-def make_async_gen(yieldables, *, initial_delay: float=0, step_delay: float=0):
+def make_async_gen(yieldables, *, initial_delay: float=0, step_delay: float=0,
+                   raise_exc: bool=True):
     """
     Returns async generator yielding with delay.
 
@@ -39,7 +40,7 @@ def make_async_gen(yieldables, *, initial_delay: float=0, step_delay: float=0):
         await asyncio.sleep(initial_delay)
         for yieldable in yieldables:
             await asyncio.sleep(step_delay)
-            if isinstance(yieldable, Exception):
+            if isinstance(yieldable, Exception) and raise_exc:
                 raise yieldable
             else:
                 yield yieldable

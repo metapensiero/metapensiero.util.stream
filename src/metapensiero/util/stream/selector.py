@@ -120,18 +120,18 @@ class Selector:
         except GeneratorExit:
             pass
         except Exception as e:
-            self._push(source, e)
+            self._push(source, e, raised=True)
         finally:
             self._cleanup(source)
 
-    def _push(self, source, el):
+    def _push(self, source, el, *, raised=False):
         """Check the result of the future. If the exception is an instance of
         ``StopAsyncIteration`` it means that the corresponding source
         is exhausted.
 
         The exception is not raised here because it will be
         swallowed. Instead it is raised on the :meth:`gen` method."""
-        self._results.append((source, el))
+        self._results.append((source, el, raised))
         self._result_avail.set()
 
     def _remove_stopped_source(self, source,  stop_fut):
@@ -218,10 +218,10 @@ class Selector:
         try:
             while await self._result_avail.wait():
                 if len(self._results):
-                    source, v = self._results.popleft()
+                    source, v, raised = self._results.popleft()
                     if v == STOPPED_TOKEN:
                         break
-                    elif isinstance(v, Exception):
+                    elif raised:
                         raise v
                     else:
                         if self._yield_source:

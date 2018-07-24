@@ -128,11 +128,11 @@ async def test_exception_handling():
         pass
     exc1 = AnException()
     exc2 = AnException()
-    src1 = [0, 1, 2, 3, 4, exc1]
+    src1 = [0, 1, 2, 3, exc1, 4]
     src2 = [0, 1, exc2, 3, 4, 5]
     source_1 = make_async_gen(src1, initial_delay=0.2)
     source_2 = make_async_gen(src2)
-    expected = [0, 1, exc2, 3, 4, 5, 0, 1, 2, 3, 4, exc1]
+    expected = [0, 1, exc2]
     result = []
 
     sel = Selector(source_1, source_2)
@@ -145,12 +145,55 @@ async def test_exception_handling():
         except StopAsyncIteration:
             break
 
-    # assert result == expected
-    # from what I can see, there's no way this can ever be True,
-    # result will forcibly contain the values up to the first
-    # exception, but not any value after that.
-    # The fact is that if the selector has to ``re-raise`` the
-    # exception propagated from the source async generator, there's no
-    # way it resumes that raise if it's coded as a coroutine (see
-    # Selector.gen()), and i don't see how else it can be coded
-    assert result == expected[:3]
+    assert result == expected
+
+@pytest.mark.asyncio
+async def test_agen_source_works():
+    class AnException(Exception):
+        pass
+    exc1 = AnException()
+    exc2 = AnException()
+    src1 = [0, 1, 2, 3, exc1, 4]
+    src2 = [0, 1, exc2, 3, 4, 5]
+    source_1 = make_async_gen(src1, initial_delay=0.2)
+    source_2 = make_async_gen(src2)
+    expected = [0, 1, exc2]
+    result = []
+
+    sel = Selector(source_1(), source_2())
+    sel_agen = sel.__aiter__()
+    while True:
+        try:
+            result.append(await sel_agen.__anext__())
+        except AnException as e:
+            result.append(e)
+        except StopAsyncIteration:
+            break
+
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_non_raised_exception_passes():
+    class AnException(Exception):
+        pass
+    exc1 = AnException()
+    exc2 = AnException()
+    src1 = [0, 1, 2, 3, exc1, 4]
+    src2 = [0, 1, exc2, 3, 4, 5]
+    source_1 = make_async_gen(src1, initial_delay=0.2)
+    source_2 = make_async_gen(src2, raise_exc=False)
+    expected = [0, 1, exc2, 3, 4, 5, 0, 1, 2, 3, exc1]
+    result = []
+
+    sel = Selector(source_1, source_2)
+    sel_agen = sel.__aiter__()
+    while True:
+        try:
+            result.append(await sel_agen.__anext__())
+        except AnException as e:
+            result.append(e)
+        except StopAsyncIteration:
+            break
+
+    assert result == expected
