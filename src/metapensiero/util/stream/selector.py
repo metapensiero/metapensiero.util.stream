@@ -55,8 +55,12 @@ class FutureValue:
 
 
 class Selector:
-    """An object that accepts multiple async iterables and *unifies*
-    them. It is itself an async iterable.
+    """An object that accepts multiple async iterables and *merges*
+    them. It is itself an async iterable.  It supports ``.asend()`` by
+    forwarding that value to the source that has provided the last
+    value.
+
+    The sources can be async generators or callables returning one.
 
     :param bool yield_source: If True, instead of yielding just the
       values, the selector will yield a tuple (source, values)
