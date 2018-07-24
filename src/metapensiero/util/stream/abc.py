@@ -7,6 +7,7 @@
 #
 
 import abc
+import inspect
 
 
 class ExecPossibleAwaitable(abc.ABC):
