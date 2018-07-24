@@ -11,6 +11,8 @@ import inspect
 
 
 class ExecPossibleAwaitable(abc.ABC):
+    """A *mixin* class used to get the final values from functions that
+    return *awaitables*."""
 
     async def _exec_possible_awaitable(self, func, *args, **kwargs):
         result = func(*args, **kwargs)
