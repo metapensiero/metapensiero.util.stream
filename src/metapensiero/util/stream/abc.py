@@ -20,7 +20,8 @@ class ExecPossibleAwaitable(abc.ABC):
 
 
 class Pluggable(abc.ABC):
-    """An ABC useful to recognize components that can be plugged together."""
+    """An ABC useful to recognize components that can be plugged
+    together."""
 
     def __lshift__(self, other):
         self.plug(other)
