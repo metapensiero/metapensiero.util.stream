@@ -10,3 +10,4 @@
 STOPPED_TOKEN = object()
 
 from .selector import Selector
+from .tee import Tee, TEE_MODE, TEE_STATUS
