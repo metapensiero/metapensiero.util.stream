@@ -8,7 +8,7 @@
 
 import asyncio
 import collections
-from contextlib import suppress
+import contextlib
 import enum
 import functools
 
@@ -194,7 +194,7 @@ class Selector:
             data = self._source_data[source]
             if data['status'] is SELECTOR_STATUS.STARTED:
                 data['task'].cancel()
-            with suppress(asyncio.CancelledError):
+            with contextlib.suppress(asyncio.CancelledError):
                 await data['task']
             data['task'] = None
 
