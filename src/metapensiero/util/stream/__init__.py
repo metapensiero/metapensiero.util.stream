@@ -6,4 +6,7 @@
 # :Copyright: © 2018 Alberto Berti
 #
 
+
+STOPPED_TOKEN = object()
+
 from .selector import Selector

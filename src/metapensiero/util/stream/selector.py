@@ -12,10 +12,11 @@ import contextlib
 import enum
 import functools
 
+from . import STOPPED_TOKEN
+
 
 SELECTOR_STATUS = enum.IntEnum('SelectorStatus',
                                'INITIAL STARTED STOPPED CLOSED')
-STOPPED_TOKEN = object()
 
 
 class FutureValue:
